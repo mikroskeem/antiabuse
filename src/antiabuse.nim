@@ -42,7 +42,13 @@ when isMainModule:
                     let replacement = sshMatches[rawMatch]
                     let replaced = line.replacef(match, replacement)
 
-                    let jsonEntry = json.parseJson(replaced)
+                    var jsonEntry: JsonNode
+                    try:
+                        jsonEntry = json.parseJson(replaced)
+                    except:
+                        stderr.writeLine("Broken json: ", replaced)
+                        break lineMatcher
+
                     let address = jsonEntry{"ip"}.getStr()
                     if strutils.contains(address, ":"):
                         jsonEntry["country"] = json.newJString($geoipDbV6.country_code_by_addr(address))
