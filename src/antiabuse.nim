@@ -1,3 +1,4 @@
+import httpClient
 import json
 import os
 import osproc
@@ -7,16 +8,11 @@ import strtabs
 import strutils
 import tables
 
-import mmgeoip
-
-let geoipDbV4 = mmgeoip.GeoIP("/usr/share/GeoIP/GeoIP.dat", mmgeoip.MEMORY_CACHE)
-let geoipDbV6 = mmgeoip.GeoIP("/usr/share/GeoIP/GeoIPv6.dat", mmgeoip.MEMORY_CACHE)
-
 # LANG=C /usr/bin/journalctl -afb -p info -n1 -t sshd -o cat
 var sshMatches = {
-  r"Failed (.+) for( invalid user)? (.*) from (.+) port (\d+) ssh2.*": """{"user": "$3", "ip": "$4", "port": $5}""",
-  r"Invalid user (.*) from (.+) port (\d+)": """{"user": "$1", "ip": "$2", "port": $3}""",
-  r"Connection closed by authenticating user (.*) (.+) port (\d+) \[preauth\]": """{"user": "$1", "ip": "$2", "port": $3}""",
+  r"Failed (.+) for( invalid user)? (.*) from (.+) port (\d+) ssh2.*": """{"username": "$3", "ip": "$4", "port": $5}""",
+  r"Invalid user (.*) from (.+) port (\d+)": """{"username": "$1", "ip": "$2", "port": $3}""",
+  r"Connection closed by authenticating user (.*) (.+) port (\d+) \[preauth\]": """{"username": "$1", "ip": "$2", "port": $3}""",
 }.newStringTable
 var compiledSshMatches = initTable[string, Regex]()
 
@@ -25,9 +21,31 @@ when isMainModule:
   for match, _ in sshMatches.pairs():
     compiledSshMatches[match] = re(match)
 
+  var messageChannel: Channel[JsonNode]
+  messageChannel.open()
+
+  var messagePostingThread = Thread[void]()
+  createThread(messagePostingThread, proc() {.thread.} =
+    while true:
+      let msg = messageChannel.recv()
+      if msg == nil:
+         break
+
+      let httpCl = httpClient.newHttpClient()
+      httpCl.headers = httpClient.newHttpHeaders({"Content-Type": "application/json"})
+      try:
+        discard httpCl.postContent(os.getEnv("ANTIABUSE_ABUSERS_POST_URL", "http://127.0.0.1:8450/ssh_abusers"), body = $msg)
+      except:
+        let e = getCurrentException()
+        let eMsg = getCurrentExceptionMsg()
+        stderr.writeLine("Unable to POST abuser information: ", repr(e), ": ", eMsg)
+
+    messageChannel.close()
+  )
+
   let journalctlEnv = {"LANG": "C"}.newStringTable
   let process = osproc.startProcess(
-    "/usr/bin/journalctl",
+    os.getEnv("ANTIABUSE_JOURNALCTL_PATH", "/usr/bin/journalctl"),
     workingDir = os.getHomeDir(),
     env = journalctlEnv,
     args = ["-afb", "-p", "info", "-n1", "-t", "sshd", "-o", "cat"]
@@ -49,13 +67,7 @@ when isMainModule:
             stderr.writeLine("Broken json: ", replaced)
             break lineMatcher
 
-          let address = jsonEntry{"ip"}.getStr()
-          if strutils.contains(address, ":"):
-            jsonEntry["country"] = json.newJString($geoipDbV6.country_code_by_addr(address))
-          else:
-            jsonEntry["country"] = json.newJString($geoipDbV4.country_code_by_addr(address))
-
-          echo $jsonEntry
+          messageChannel.send(jsonEntry)
           break lineMatcher
 
-      echo %*{"error": "Failed to parse line", "line": line}
+      #echo %*{"error": "Failed to parse line", "line": line}
