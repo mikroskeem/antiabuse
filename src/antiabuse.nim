@@ -48,7 +48,7 @@ when isMainModule:
     os.getEnv("ANTIABUSE_JOURNALCTL_PATH", "/usr/bin/journalctl"),
     workingDir = os.getHomeDir(),
     env = journalctlEnv,
-    args = ["-afb", "-p", "info", "-n1", "-t", "sshd", "-o", "cat"]
+    args = ["-afb", "-p", "info", "-n0", "-t", "sshd", "-o", "cat"]
   )
   let strm = osproc.outputStream(process)
 
