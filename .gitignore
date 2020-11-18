@@ -1,1 +1,4 @@
 antiabuse
+.gitsecret/keys/random_seed
+!*.secret
+scanlogd.txt

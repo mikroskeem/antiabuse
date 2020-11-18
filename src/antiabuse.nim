@@ -21,7 +21,7 @@ when isMainModule:
   for match, _ in sshMatches.pairs():
     compiledSshMatches[match] = re(match)
 
-  var messageChannel: Channel[JsonNode]
+  var messageChannel: Channel[(JsonNode, string)]
   messageChannel.open()
 
   var messagePostingThread = Thread[void]()
@@ -31,10 +31,12 @@ when isMainModule:
       if msg == nil:
          break
 
+      let data, table = msg
+
       let httpCl = httpClient.newHttpClient()
       httpCl.headers = httpClient.newHttpHeaders({"Content-Type": "application/json"})
       try:
-        discard httpCl.postContent(os.getEnv("ANTIABUSE_ABUSERS_POST_URL", "http://127.0.0.1:8450/ssh_abusers"), body = $msg)
+        discard httpCl.postContent(os.getEnv("ANTIABUSE_ABUSERS_POST_URL", "http://127.0.0.1:8450/" & table), body = $data)
       except:
         let e = getCurrentException()
         let eMsg = getCurrentExceptionMsg()
@@ -67,7 +69,7 @@ when isMainModule:
             stderr.writeLine("Broken json: ", replaced)
             break lineMatcher
 
-          messageChannel.send(jsonEntry)
+          messageChannel.send((jsonEntry, "ssh_abusers"))
           break lineMatcher
 
       #echo %*{"error": "Failed to parse line", "line": line}
